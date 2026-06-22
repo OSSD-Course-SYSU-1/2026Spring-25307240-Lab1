@@ -1,0 +1,510 @@
+/*
+ * Copyright (c) 2023 Huawei Device Co., Ltd.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+
+import { abilityAccessCtrl } from '@kit.AbilityKit';
+import { common } from '@kit.AbilityKit';
+import { geoLocationManager } from '@kit.LocationKit';
+import { sensor } from '@kit.SensorServiceKit';
+import { i18n } from '@kit.LocalizationKit';
+import { router } from '@kit.ArkUI';
+import { BackgroundUtil } from '../common/utils/BackgroundUtil';
+import { CompletionStatus } from '../view/CompletionStatus';
+import { CommonConstants } from '../common/constants/CommonConstants';
+import { CurrentSituation } from '../view/CurrentSituation';
+import LocationUtil from '../common/utils/LocationUtil';
+import Logger from '../common/utils/Logger';
+import NumberUtil from '../common/utils/NumberUtil';
+import StepsUtil from '../common/utils/StepsUtil';
+import { getSedentaryReminderUtil, SedentaryReminderUtil } from '../common/utils/SedentaryReminderUtil';
+import { getUserProfileManager, UserProfile } from '../common/utils/UserProfileManager';
+import { getHealthCalculator, CalorieResult, ExerciseIntensity } from '../common/utils/HealthCalculator';
+import { getReminderManager } from '../common/utils/ReminderManager';
+
+const TAG: string = 'HomePage';
+const uiContext: UIContext | undefined = AppStorage.get('uiContext');
+
+@Entry
+@Component
+struct HomePage {
+  @State currentSteps: string = CommonConstants.INITIALIZATION_VALUE;
+  @Provide stepGoal: string = '';
+  @State oldSteps: string = '';
+  @State startPosition: string = '';
+  @State currentLocation: string = '';
+  @State locale: string = i18n.System.getAppPreferredLanguage();
+  @State latitude: number = 0;
+  @State longitude: number = 0;
+  @State progressValue: number = 0;
+  @State isStart: boolean = false;
+  @State sedentaryMinutes: number = 0; // 久坐时间（分钟）
+  
+  // 用户档案和卡路里消耗
+  @State userProfile: UserProfile = {
+    weight: 70,
+    height: 170,
+    age: 25,
+    gender: 'male',
+    strideLength: 0.7
+  };
+  @State calorieResult: CalorieResult = {
+    totalCalories: 0,
+    basalCalories: 0,
+    activityCalories: 0,
+    stepsCalories: 0,
+    distanceCalories: 0
+  };
+  @State distance: number = 0; // 步行距离（米）
+  
+  private context: common.UIAbilityContext = uiContext?.getHostContext() as common.UIAbilityContext;
+  private sedentaryReminderUtil: SedentaryReminderUtil | null = null; // 久坐监测工具
+  private sedentaryUpdateTimer: number = -1; // 久坐时间更新定时器
+  private profileManager = getUserProfileManager(this.context);
+  private healthCalculator = getHealthCalculator();
+  private reminderManager = getReminderManager(this.context);
+  private sensorCallback: (data: sensor.PedometerResponse) => void = (data: sensor.PedometerResponse) => {
+    try {
+      if (this.isStart) {
+        if (StepsUtil.checkStrIsEmpty(this.oldSteps)) {
+          this.oldSteps = data.steps.toString();
+          StepsUtil.putStorageValue(CommonConstants.OLD_STEPS, this.oldSteps);
+        } else {
+          this.currentSteps = (data.steps - NumberUtil._parseInt(this.oldSteps, 10)).toString();
+        }
+      } else {
+        this.currentSteps = data.steps.toString();
+      }
+
+      // 更新久坐监测的活动状态
+      if (this.sedentaryReminderUtil) {
+        this.sedentaryReminderUtil.updateActivity(data.steps);
+      }
+
+      if (StepsUtil.checkStrIsEmpty(this.stepGoal) || !this.isStart) {
+        return;
+      }
+      StepsUtil.putStorageValue(CommonConstants.CURRENT_STEPS, this.currentSteps);
+      this.progressValue = StepsUtil.getProgressValue(NumberUtil._parseInt(this.stepGoal, 10),
+        NumberUtil._parseInt(this.currentSteps, 10));
+      StepsUtil.putStorageValue(CommonConstants.PROGRESS_VALUE_TAG, String(this.progressValue));
+      
+      // 更新卡路里消耗
+      this.updateCalories();
+      
+      // 检查目标达成
+      this.checkGoalAchievement();
+    } catch (err) {
+      Logger.error(TAG, 'Sensor on err' + JSON.stringify(err));
+    }
+  }
+  private getGeolocation: (location: geoLocationManager.Location) => void = (location: geoLocationManager.Location) => {
+    if (this.latitude === location.latitude && this.longitude === location.longitude) {
+      return;
+    }
+    this.latitude = location.latitude;
+    this.longitude = location.longitude;
+    let reverseGeocodeRequest: geoLocationManager.ReverseGeoCodeRequest = {
+      'locale': this.locale.toString().includes('zh') ? 'zh' : 'en',
+      'latitude': this.latitude,
+      'longitude': this.longitude,
+      'maxItems': 1
+    };
+    geoLocationManager.getAddressesFromLocation(reverseGeocodeRequest).then(data => {
+      if (data[0].placeName) {
+        this.currentLocation = data[0].placeName;
+      }
+    }).catch((err: Error) => {
+      Logger.error(TAG, 'GetAddressesFromLocation err ' + JSON.stringify(err));
+    });
+  }
+
+  onPageShow() {
+    this.init();
+    this.requestPermissions();
+    this.initSedentaryMonitoring();
+  }
+
+  onPageHide() {
+    try {
+      sensor.off(sensor.SensorId.PEDOMETER);
+    } catch (err) {
+      Logger.error(TAG, `close sensor failed Cause:  ${JSON.stringify(err)}`);
+    }
+    this.stopSedentaryMonitoring();
+  }
+
+  init() {
+    StepsUtil.getStorageValue(CommonConstants.IS_START).then((res: string) => {
+      if (res === CommonConstants.TRUE) {
+        this.isStart = true;
+        StepsUtil.getStorageValue(CommonConstants.CURRENT_STEPS).then((res: string) => {
+          if (StepsUtil.checkStrIsEmpty(res)) {
+            return;
+          }
+          this.currentSteps = res;
+          this.updateCalories();
+          this.checkGoalAchievement();
+        });
+
+        StepsUtil.getStorageValue(CommonConstants.PROGRESS_VALUE_TAG).then((res: string) => {
+          if (StepsUtil.checkStrIsEmpty(res)) {
+            return;
+          }
+          this.progressValue = NumberUtil._parseInt(res, 10);
+        });
+
+        StepsUtil.getStorageValue(CommonConstants.START_POSITION).then((res: string) => {
+          if (StepsUtil.checkStrIsEmpty(res)) {
+            return;
+          }
+          this.startPosition = res;
+        });
+
+        StepsUtil.getStorageValue(CommonConstants.OLD_STEPS).then((res: string) => {
+          if (StepsUtil.checkStrIsEmpty(res)) {
+            return;
+          }
+          this.oldSteps = res;
+        });
+      } else {
+        this.isStart = false;
+      }
+    })
+
+    StepsUtil.getStorageValue(CommonConstants.STEP_GOAL).then((res: string) => {
+      if (StepsUtil.checkStrIsEmpty(res)) {
+        return;
+      }
+      this.stepGoal = res;
+    });
+    
+    // 加载用户档案
+    this.loadUserProfile();
+    
+    // 加载提醒设置
+    this.reminderManager.loadSettings();
+  }
+  
+  /**
+   * 加载用户档案
+   */
+  private async loadUserProfile(): Promise<void> {
+    try {
+      const profile = await this.profileManager.getUserProfile();
+      if (profile) {
+        this.userProfile = profile;
+        this.updateCalories();
+      }
+      Logger.info(TAG, 'User profile loaded');
+    } catch (err) {
+      Logger.error(TAG, `Load user profile failed: ${JSON.stringify(err)}`);
+    }
+  }
+  
+  /**
+   * 更新卡路里消耗计算
+   */
+  private updateCalories(): void {
+    const steps = NumberUtil._parseInt(this.currentSteps, 10);
+    if (steps <= 0 || !this.userProfile.strideLength) {
+      return;
+    }
+    
+    // 计算距离
+    this.distance = this.healthCalculator.calculateDistance(steps, this.userProfile.strideLength);
+    
+    // 估算运动时长（假设平均每分钟60步）
+    const duration = this.healthCalculator.calculateDuration(steps, 60);
+    
+    // 评估运动强度
+    const intensity = this.healthCalculator.assessIntensity(60);
+    
+    // 计算卡路里消耗
+    this.calorieResult = this.healthCalculator.calculateCalories(this.userProfile, {
+      steps: steps,
+      distance: this.distance,
+      duration: duration,
+      intensity: intensity
+    });
+  }
+  
+  /**
+   * 检查目标达成
+   */
+  private checkGoalAchievement(): void {
+    const currentSteps = NumberUtil._parseInt(this.currentSteps, 10);
+    const goalSteps = NumberUtil._parseInt(this.stepGoal, 10);
+    
+    if (currentSteps > 0 && goalSteps > 0) {
+      this.reminderManager.checkGoalAchievement(currentSteps, goalSteps);
+    }
+  }
+
+  /**
+   * 初始化久坐监测
+   */
+  initSedentaryMonitoring(): void {
+    try {
+      // 获取久坐监测工具实例
+      this.sedentaryReminderUtil = getSedentaryReminderUtil(this.context);
+      
+      // 启动久坐监测，默认60分钟阈值
+      this.sedentaryReminderUtil.startMonitoring(
+        CommonConstants.SEDENTARY_THRESHOLD_MINUTES,
+        CommonConstants.SEDENTARY_CHECK_INTERVAL_MINUTES
+      );
+      
+      // 启动定时器更新久坐时间显示（每分钟更新一次）
+      this.sedentaryUpdateTimer = setInterval(() => {
+        if (this.sedentaryReminderUtil) {
+          this.sedentaryMinutes = this.sedentaryReminderUtil.getInactiveMinutes();
+        }
+      }, 60000); // 每分钟更新一次
+      
+      // 立即更新一次
+      if (this.sedentaryReminderUtil) {
+        this.sedentaryMinutes = this.sedentaryReminderUtil.getInactiveMinutes();
+      }
+      
+      Logger.info(TAG, 'Sedentary monitoring initialized');
+    } catch (err) {
+      Logger.error(TAG, `Init sedentary monitoring failed: ${JSON.stringify(err)}`);
+    }
+  }
+
+  /**
+   * 停止久坐监测
+   */
+  stopSedentaryMonitoring(): void {
+    // 停止定时器
+    if (this.sedentaryUpdateTimer !== -1) {
+      clearInterval(this.sedentaryUpdateTimer);
+      this.sedentaryUpdateTimer = -1;
+    }
+    
+    // 停止久坐监测
+    if (this.sedentaryReminderUtil) {
+      this.sedentaryReminderUtil.stopMonitoring();
+    }
+    
+    Logger.info(TAG, 'Sedentary monitoring stopped');
+  }
+
+  requestPermissions(): void {
+    let atManager = abilityAccessCtrl.createAtManager();
+    try {
+      atManager.requestPermissionsFromUser(this.context, CommonConstants.REQUEST_PERMISSIONS).then((data) => {
+        if (data.authResults[0] !== 0 || data.authResults[1] !== 0) {
+          return;
+        }
+        const that = this;
+        try {
+          sensor.on(sensor.SensorId.PEDOMETER, this.sensorCallback, { interval: CommonConstants.SENSOR_INTERVAL });
+
+        } catch (err) {
+          console.error('On fail, errCode: ' + JSON.stringify(err));
+        }
+
+        LocationUtil.geolocationOn(this.getGeolocation);
+      }).catch((err: Error) => {
+        Logger.error(TAG, 'requestPermissionsFromUser err' + JSON.stringify(err));
+      })
+    } catch (err) {
+      Logger.error(TAG, 'requestPermissionsFromUser err' + JSON.stringify(err));
+    }
+  }
+
+  build() {
+    Stack({ alignContent: Alignment.TopStart }) {
+      CompletionStatus({
+        progressValue: $progressValue
+      })
+
+      Column() {
+        CurrentSituation({
+          currentSteps: this.currentSteps,
+          startPosition: this.startPosition,
+          currentLocation: this.currentLocation,
+          sedentaryMinutes: this.sedentaryMinutes
+        })
+        
+        // 卡路里消耗显示
+        this.CalorieDisplay()
+      }
+      .width('100%')
+
+      Row() {
+        Button(this.isStart ? $r('app.string.stop') : $r('app.string.start'))
+          .width($r('app.float.start_button_width'))
+          .height($r('app.float.start_button_height'))
+          .borderRadius($r('app.float.start_button_radius'))
+          .backgroundColor('#D3D3D3')
+          .fontSize($r('app.float.start_font_size'))
+          .fontColor('#000000')
+          .fontWeight(CommonConstants.BIG_FONT_WEIGHT)
+          .onClick(() => {
+            if (this.isStart) {
+              this.isStart = false;
+              this.oldSteps = '';
+              StepsUtil.CleanStepsData();
+              BackgroundUtil.stopContinuousTask(this.context);
+            } else {
+              if (this.stepGoal === '' || this.currentLocation === '') {
+                this.getUIContext().getPromptAction().showToast({ message: CommonConstants.WAIT });
+              } else {
+                this.isStart = true;
+                this.startPosition = this.currentLocation;
+                StepsUtil.putStorageValue(CommonConstants.START_POSITION, this.startPosition);
+                this.currentSteps = CommonConstants.INITIALIZATION_VALUE;
+                this.progressValue = 0;
+                BackgroundUtil.startContinuousTask(this.context);
+              }
+            }
+            StepsUtil.putStorageValue(CommonConstants.IS_START, String(this.isStart));
+          })
+      }
+      .width(CommonConstants.FULL_WIDTH)
+      .height($r('app.float.button_height'))
+      .margin({ top: $r('app.float.button_margin_top') })
+      .justifyContent(FlexAlign.Center)
+      
+      // 设置按钮（右上角）
+      Button() {
+        Text('⚙')
+          .fontSize(24)
+          .fontColor('#000000')
+      }
+      .width(44)
+      .height(44)
+      .backgroundColor('#D3D3D3')
+      .borderRadius(22)
+      .position({ x: '90%', y: 20 })
+      .translate({ x: '-50%' })
+      .onClick(() => {
+        router.pushUrl({
+          url: 'pages/SettingsPage'
+        });
+      })
+    }
+    .width(CommonConstants.FULL_WIDTH)
+    .height(CommonConstants.FULL_HEIGHT)
+    .backgroundColor('#000000')
+  }
+  
+  /**
+   * 卡路里消耗显示
+   */
+  @Builder
+  CalorieDisplay() {
+    Column() {
+      Text('运动数据')
+        .fontSize(16)
+        .fontWeight(FontWeight.Medium)
+        .fontColor('#FFFFFF')
+        .width('100%')
+        .margin({ bottom: 15 })
+      
+      Row() {
+        // 卡路里消耗
+        Column() {
+          Text('🔥')
+            .fontSize(28)
+          Text(`${this.calorieResult.totalCalories}`)
+            .fontSize(24)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#FF6B6B')
+            .margin({ top: 5 })
+          Text('千卡')
+            .fontSize(12)
+            .fontColor('#AAAAAA')
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Center)
+        
+        Divider()
+          .vertical(true)
+          .height(60)
+          .color('#33FFFFFF')
+        
+        // 距离
+        Column() {
+          Text('📏')
+            .fontSize(28)
+          Text(`${(this.distance / 1000).toFixed(2)}`)
+            .fontSize(24)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#4ECDC4')
+            .margin({ top: 5 })
+          Text('公里')
+            .fontSize(12)
+            .fontColor('#AAAAAA')
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Center)
+        
+        Divider()
+          .vertical(true)
+          .height(60)
+          .color('#33FFFFFF')
+        
+        // 步数
+        Column() {
+          Text('👟')
+            .fontSize(28)
+          Text(`${this.currentSteps}`)
+            .fontSize(24)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#45B7AA')
+            .margin({ top: 5 })
+          Text('步')
+            .fontSize(12)
+            .fontColor('#AAAAAA')
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Center)
+      }
+      .width('100%')
+      
+      // 详细信息
+      Column() {
+        Row() {
+          Text(`基础代谢: ${this.calorieResult.basalCalories} 千卡`)
+            .fontSize(13)
+            .fontColor('#CCCCCC')
+          Text(' | ')
+            .fontColor('#33FFFFFF')
+          Text(`活动消耗: ${this.calorieResult.activityCalories} 千卡`)
+            .fontSize(13)
+            .fontColor('#CCCCCC')
+        }
+        .margin({ top: 10 })
+      }
+      .width('100%')
+      .alignItems(HorizontalAlign.Center)
+    }
+    .width('90%')
+    .padding(15)
+    .backgroundColor('#1A1A1A')
+    .borderRadius(12)
+    .margin({ top: 15 })
+    .alignSelf(ItemAlign.Center)
+    .shadow({
+      radius: 20,
+      color: '#33D3D3D3',
+      offsetX: 0,
+      offsetY: 0
+    })
+  }
+}

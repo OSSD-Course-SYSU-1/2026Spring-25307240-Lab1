@@ -1,0 +1,49 @@
+{
+  "app": {
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "C:\\Users\\HP\\.ohos\\config\\default_Pedometer-master_pBcEWMpr3x3-BRv8OcleQ5ILHMwDRMhLKT6kzICOF_8=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001BD6D9279493D8F6774CE139D891DB9E84813417165C0CFB538948DC558C36A23927743DC10D685B",
+          "profile": "C:\\Users\\HP\\.ohos\\config\\default_Pedometer-master_pBcEWMpr3x3-BRv8OcleQ5ILHMwDRMhLKT6kzICOF_8=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "C:\\Users\\HP\\.ohos\\config\\default_Pedometer-master_pBcEWMpr3x3-BRv8OcleQ5ILHMwDRMhLKT6kzICOF_8=.p12",
+          "storePassword": "0000001B46A9533019263211BCC0EF18E5A99314B984D6C821DFF3D64156736401D2C606E2175EAAC9E5B2"
+        }
+      }
+    ],
+    "products": [
+      {
+        "name": "default",
+        // HarmonyOS 5.0.0 target API 12
+        "targetSdkVersion": "5.0.0(12)",
+        // Minimum compatible API 12, supports more devices
+        "compatibleSdkVersion": "5.0.0(12)",
+        "runtimeOS": "HarmonyOS",
+        "buildOption": {
+          "strictMode": {
+            "caseSensitiveCheck": true,
+            "useNormalizedOHMUrl": true
+          }
+        }
+      }
+    ]
+  },
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,115 @@
+{
+  "module": {
+    "name": "entry",
+    "type": "entry",
+    "description": "$string:module_desc",
+    "mainElement": "EntryAbility",
+    // 设备类型：保留手机+平板，新增穿戴设备
+    "deviceTypes": [
+      "phone",
+      "tablet",
+      "wearable"
+    ],
+    "deliveryWithInstall": true,
+    "installationFree": false,
+    "pages": "$profile:main_pages",
+    "abilities": [
+      {
+        "name": "EntryAbility",
+        "srcEntry": "./ets/entryability/EntryAbility.ets",
+        "description": "$string:EntryAbility_desc",
+        "icon": "$media:icon",
+        "label": "$string:EntryAbility_label",
+        "startWindowIcon": "$media:icon",
+        "startWindowBackground": "$color:start_window_background",
+        // 穿戴设备后台模式：仅保留位置，移除长时后台
+        "backgroundModes": ["location"],
+        "exported": true,
+        "skills": [
+          {
+            "entities": [
+              "entity.system.home"
+            ],
+            "actions": [
+              "action.system.home"
+            ]
+          }
+        ]
+      }
+    ],
+    // 穿戴设备权限配置（精简版）
+    "requestPermissions": [
+      // 1. 后台运行权限 - 穿戴设备受限但仍需申请
+      {
+        "name": "ohos.permission.KEEP_BACKGROUND_RUNNING",
+        "reason": "$string:reason_background",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "inuse"
+        }
+      },
+      // 2. 计步传感器权限 - 穿戴设备核心功能
+      {
+        "name": "ohos.permission.ACTIVITY_MOTION",
+        "reason": "$string:reason_activity_motion",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "inuse"
+        }
+      },
+      // 3. 模糊位置权限 - 穿戴设备支持
+      {
+        "name": "ohos.permission.APPROXIMATELY_LOCATION",
+        "reason": "$string:reason_location",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "inuse"
+        }
+      },
+      // 4. 精确位置权限 - 部分穿戴设备支持
+      {
+        "name": "ohos.permission.LOCATION",
+        "reason": "$string:reason_location",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "inuse"
+        }
+      },
+      // 5. 后台位置权限 - 穿戴设备受限
+      {
+        "name": "ohos.permission.LOCATION_IN_BACKGROUND",
+        "reason": "$string:reason_location_in_background",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "inuse"
+        }
+      },
+      // 6. 通知权限 - 穿戴设备支持表盘通知
+      {
+        "name": "ohos.permission.NOTIFICATION_CONTROLLER",
+        "reason": "$string:reason_notification",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "inuse"
+        }
+      },
+      // 7. 振动权限 - 穿戴设备支持（用于提醒）
+      {
+        "name": "ohos.permission.VIBRATE",
+        "reason": "$string:reason_vibrate",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "inuse"
+        }
+      }
+      // 注意：以下权限在穿戴设备不支持，已移除
+      // - ohos.permission.CAMERA (相机)
+      // - ohos.permission.MICROPHONE (麦克风)
+      // - ohos.permission.READ_CONTACTS (通讯录)
+      // - ohos.permission.WRITE_CONTACTS (写通讯录)
+      // - ohos.permission.SEND_MESSAGES (发送短信)
+      // - ohos.permission.RECEIVE_SMS (接收短信)
+      // - ohos.permission.READ_CALENDAR (日历)
+    ]
+  }
+}

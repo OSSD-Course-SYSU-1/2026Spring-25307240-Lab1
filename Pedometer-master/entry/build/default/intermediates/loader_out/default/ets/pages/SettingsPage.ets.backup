@@ -1,0 +1,1364 @@
+/*
+ * Copyright (c) 2023 Huawei Device Co., Ltd.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { common } from '@kit.AbilityKit';
+import { router } from '@kit.ArkUI';
+import { CommonConstants } from '../common/constants/CommonConstants';
+import StepsUtil from '../common/utils/StepsUtil';
+import Logger from '../common/utils/Logger';
+import { getUserProfileManager, UserProfile } from '../common/utils/UserProfileManager';
+import { getHealthCalculator, HealthMetrics } from '../common/utils/HealthCalculator';
+import { getReminderManager, ReminderSettings, ReminderType, ReminderHistory } from '../common/utils/ReminderManager';
+import { getApiVersionUtil, ApiVersionInfo, ApiVersion } from '../common/utils/ApiVersionUtil';
+
+const TAG: string = 'SettingsPage';
+const uiContext: UIContext | undefined = AppStorage.get('uiContext');
+
+/**
+ * 设置页面
+ * 
+ * 功能说明:
+ * 1. 用户档案设置（身高、体重、年龄、性别）
+ * 2. 步数目标设置
+ * 3. 久坐提醒设置
+ * 4. 数据管理（清除缓存、导出数据）
+ * 5. 关于信息
+ */
+@Entry
+@Component
+struct SettingsPage {
+  // 用户档案
+  @State userProfile: UserProfile = {
+    weight: 70,
+    height: 170,
+    age: 25,
+    gender: 'male',
+    strideLength: 0.7
+  };
+  
+  // 健康指标
+  @State healthMetrics: HealthMetrics = {
+    bmi: 0,
+    bmiCategory: '',
+    bmr: 0,
+    tdee: 0,
+    idealWeight: 0,
+    healthyWeightRange: [0, 0]
+  };
+  
+  // 设置项
+  @State stepGoal: number = 10000;
+  @State sedentaryThreshold: number = 60;
+  @State isSedentaryReminderEnabled: boolean = true;
+  @State isDarkMode: boolean = false;
+  
+  // 提醒设置
+  @State reminderSettings: ReminderSettings = {
+    sedentaryEnabled: true,
+    sedentaryThreshold: 60,
+    goalAchievedEnabled: true,
+    dailyGoalEnabled: false,
+    dailyGoalTime: '20:00',
+    hourlyEnabled: false,
+    hourlyInterval: 1,
+    soundEnabled: true,
+    vibrationEnabled: true
+  };
+  @State reminderHistory: ReminderHistory[] = [];
+  
+  // API版本信息
+  @State apiVersionInfo: ApiVersionInfo | null = null;
+  @State showApiVersionInfo: boolean = false;
+  
+  // UI状态
+  @State showStepGoalDialog: boolean = false;
+  @State showUserProfileDialog: boolean = false;
+  @State showReminderTimeDialog: boolean = false;
+  
+  private context: common.UIAbilityContext = uiContext?.getHostContext() as common.UIAbilityContext;
+  private profileManager = getUserProfileManager(this.context);
+  private healthCalculator = getHealthCalculator();
+  private reminderManager = getReminderManager(this.context);
+  
+  async aboutToAppear() {
+    await this.loadSettings();
+  }
+  
+  /**
+   * 加载设置
+   */
+  private async loadSettings(): Promise<void> {
+    try {
+      // 加载用户档案
+      const profile = await this.profileManager.getUserProfile();
+      if (profile) {
+        this.userProfile = profile;
+        // 计算健康指标
+        this.healthMetrics = this.healthCalculator.calculateHealthMetrics(profile, 1);
+      }
+      
+      // 加载步数目标
+      const goalStr = await StepsUtil.getStorageValue(CommonConstants.STEP_GOAL);
+      if (goalStr && !StepsUtil.checkStrIsEmpty(goalStr)) {
+        this.stepGoal = parseInt(goalStr);
+      }
+      
+      // 加载久坐提醒设置
+      const sedentaryEnabled = await StepsUtil.getStorageValue(CommonConstants.SEDENTARY_REMINDER_ENABLED);
+      this.isSedentaryReminderEnabled = sedentaryEnabled !== 'false';
+      
+      // 加载提醒设置
+      await this.reminderManager.loadSettings();
+      this.reminderSettings = this.reminderManager.getSettings();
+      this.reminderHistory = this.reminderManager.getHistory();
+      
+      // 加载API版本信息
+      this.apiVersionInfo = getApiVersionUtil().getVersionInfo();
+      
+      Logger.info(TAG, 'Settings loaded');
+    } catch (err) {
+      Logger.error(TAG, `Load settings failed: ${JSON.stringify(err)}`);
+    }
+  }
+  
+  build() {
+    Column() {
+      // 标题栏
+      this.TitleBar()
+      
+      Scroll() {
+        Column() {
+          // 用户档案设置
+          this.UserProfileSection()
+          
+          // 健康指标展示
+          this.HealthMetricsSection()
+          
+          // 步数目标设置
+          this.StepGoalSection()
+          
+          // 久坐提醒设置
+          this.SedentaryReminderSection()
+          
+          // 数据管理
+          this.DataManagementSection()
+          
+          // API版本信息
+          this.ApiVersionSection()
+          
+          // 关于信息
+          this.AboutSection()
+        }
+        .width('100%')
+        .padding(15)
+      }
+      .width('100%')
+      .layoutWeight(1)
+      .scrollBar(BarState.Off)
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor('#F5F5F5')
+  }
+  
+  /**
+   * 标题栏
+   */
+  @Builder
+  TitleBar() {
+    Row() {
+      Button() {
+        Row() {
+          Text('←')
+            .fontSize(20)
+            .fontColor(Color.White)
+        }
+      }
+      .width(40)
+      .height(40)
+      .backgroundColor(Color.Transparent)
+      .onClick(() => {
+        router.back();
+      })
+      
+      Text('设置')
+        .fontSize(18)
+        .fontColor(Color.White)
+        .fontWeight(FontWeight.Medium)
+        .layoutWeight(1)
+        .textAlign(TextAlign.Center)
+      
+      Blank()
+        .width(40)
+    }
+    .width('100%')
+    .height(56)
+    .padding({ left: 10, right: 10 })
+    .linearGradient({
+      angle: 135,
+      colors: [['#4ECDC4', 0], ['#45B7AA', 1]]
+    })
+  }
+  
+  /**
+   * 用户档案设置区域
+   */
+  @Builder
+  UserProfileSection() {
+    Column() {
+      Text('用户档案')
+        .fontSize(16)
+        .fontWeight(FontWeight.Medium)
+        .width('100%')
+        .margin({ bottom: 15 })
+      
+      // 身高
+      this.SettingItem('导出数据', '', () => {
+        this.exportData();
+      })
+      
+      Divider().color('#E0E0E0')
+      
+      this.SettingItem('重置设置', '', () => {
+        this.resetSettings();
+      })
+    }
+    .width('100%')
+    .padding(15)
+    .backgroundColor(Color.White)
+    .borderRadius(12)
+    .margin({ top: 10 })
+  }
+  
+  /**
+   * API版本信息区域
+   */
+  @Builder
+  ApiVersionSection() {
+    Column() {
+      Text('设备兼容性')
+        .fontSize(16)
+        .fontWeight(FontWeight.Medium)
+        .width('100%')
+        .margin({ bottom: 15 })
+      
+      if (this.apiVersionInfo) {
+        Row() {
+          Text('设备类型')
+            .fontSize(14)
+            .fontColor('#333333')
+          
+          Blank()
+          
+          Text(this.apiVersionInfo.deviceType)
+            .fontSize(14)
+            .fontColor('#666666')
+        }
+        .width('100%')
+        
+        Divider().color('#E0E0E0').margin({ top: 10, bottom: 10 })
+        
+        Row() {
+          Text('API版本')
+            .fontSize(14)
+            .fontColor('#333333')
+          
+          Blank()
+          
+          Text(`${this.apiVersionInfo.sdkApiVersion}`)
+            .fontSize(14)
+            .fontColor('#666666')
+        }
+        .width('100%')
+        
+        Divider().color('#E0E0E0').margin({ top: 10, bottom: 10 })
+        
+        Row() {
+          Text('系统版本')
+            .fontSize(14)
+            .fontColor('#333333')
+          
+          Blank()
+          
+          Text(this.apiVersionInfo.distributionOSApiName)
+            .fontSize(14)
+            .fontColor('#666666')
+        }
+        .width('100%')
+        
+        Divider().color('#E0E0E0').margin({ top: 10, bottom: 10 })
+        
+        Row() {
+          Text('兼容性')
+            .fontSize(14)
+            .fontColor('#333333')
+          
+          Blank()
+          
+          if (this.apiVersionInfo.sdkApiVersion >= ApiVersion.API_17) {
+            Text('✓ 完全兼容')
+              .fontSize(14)
+              .fontColor('#4CAF50')
+          } else {
+            Text('部分功能受限')
+              .fontSize(14)
+              .fontColor('#FF9800')
+          }
+        }
+        .width('100%')
+      } else {
+        Text('加载中...')
+          .fontSize(14)
+          .fontColor('#999999')
+      }
+    }
+    .width('100%')
+    .padding(15)
+    .backgroundColor(Color.White)
+    .borderRadius(12)
+    .margin({ top: 10 })
+  }
+  
+  /**
+   * 关于信息区域
+   */
+  @Builder
+  AboutSection() {
+    Column() {
+      Text('关于')
+        .fontSize(16)
+        .fontWeight(FontWeight.Medium)
+        .width('100%')
+        .margin({ bottom: 15 })
+      
+      this.SettingItem('版本', '1.0.0', () => {})
+      
+      Divider().color('#E0E0E0')
+      
+      this.SettingItem('开发者', 'HarmonyOS Team', () => {})
+    }
+    .width('100%')
+    .padding(15)
+    .backgroundColor(Color.White)
+    .borderRadius(12)
+    .margin({ top: 10 })
+  }
+  
+  /**
+   * 设置项组件
+   */
+  @Builder
+  SettingItem(label: string, value: string, action: () => void) {
+    Row() {
+      Text(label)
+        .fontSize(14)
+        .fontColor('#333333')
+      
+      Blank()
+      
+      if (value) {
+        Text(value)
+          .fontSize(14)
+          .fontColor('#666666')
+      }
+      
+      Text('>')
+        .fontSize(14)
+        .fontColor('#999999')
+        .margin({ left: 5 })
+    }
+    .width('100%')
+    .height(50)
+    .onClick(action)
+  }
+  
+  /**
+   * 更新步数目标
+   */
+  private updateStepGoal(goal: number): void {
+    this.stepGoal = goal;
+    StepsUtil.putStorageValue(CommonConstants.STEP_GOAL, String(goal));
+  }
+  
+  /**
+   * 更新久坐阈值
+   */
+  private updateSedentaryThreshold(minutes: number): void {
+    this.sedentaryThreshold = minutes;
+    StepsUtil.putStorageValue(CommonConstants.SEDENTARY_THRESHOLD, String(minutes));
+  }
+  
+  /**
+   * 清除缓存
+   */
+  private async clearCache(): Promise<void> {
+    try {
+      Logger.info(TAG, 'Cache cleared');
+    } catch (err) {
+      Logger.error(TAG, `Clear cache failed: ${JSON.stringify(err)}`);
+    }
+  }
+  
+  /**
+   * 导出数据
+   */
+  private async exportData(): Promise<void> {
+    try {
+      Logger.info(TAG, 'Data exported');
+    } catch (err) {
+      Logger.error(TAG, `Export data failed: ${JSON.stringify(err)}`);
+    }
+  }
+  
+  /**
+   * 重置设置
+   */
+  private async resetSettings(): Promise<void> {
+    try {
+      this.stepGoal = 10000;
+      this.sedentaryThreshold = 60;
+      this.isSedentaryReminderEnabled = true;
+      
+      await StepsUtil.putStorageValue(CommonConstants.STEP_GOAL, '10000');
+      await StepsUtil.putStorageValue(CommonConstants.SEDENTARY_THRESHOLD, '60');
+      await StepsUtil.putStorageValue(CommonConstants.SEDENTARY_REMINDER_ENABLED, 'true');
+      
+      Logger.info(TAG, 'Settings reset');
+    } catch (err) {
+      Logger.error(TAG, `Reset settings failed: ${JSON.stringify(err)}`);
+    }
+  }
+}Item('身高', `${this.userProfile.height} cm`, () => {
+        this.showUserProfileDialog = true;
+      })
+      
+      Divider().color('#E0E0E0')
+      
+      // 体重
+      this.SettingItem('体重', `${this.userProfile.weight} kg`, () => {
+        this.showUserProfileDialog = true;
+      })
+      
+      Divider().color('#E0E0E0')
+      
+      // 年龄
+      this.SettingItem('年龄', `${this.userProfile.age} 岁`, () => {
+        this.showUserProfileDialog = true;
+      })
+      
+      Divider().color('#E0E0E0')
+      
+      // 性别
+      this.SettingItem('性别', this.userProfile.gender === 'male' ? '男' : '女', () => {
+        this.showUserProfileDialog = true;
+      })
+    }
+    .width('100%')
+    .padding(15)
+    .backgroundColor(Color.White)
+    .borderRadius(12)
+    .margin({ top: 10 })
+    .bindSheet($$this.showUserProfileDialog, this.UserProfileDialog(), {
+      height: 400,
+      dragBar: false
+    })
+  }
+  
+  /**
+   * 健康指标展示区域
+   */
+  @Builder
+  HealthMetricsSection() {
+    Column() {
+      Text('健康指标')
+        .fontSize(16)
+        .fontWeight(FontWeight.Medium)
+        .width('100%')
+        .margin({ bottom: 15 })
+      
+      // BMI
+      Row() {
+        Column() {
+          Text('BMI')
+            .fontSize(14)
+            .fontColor('#666666')
+          Text(`${this.healthMetrics.bmi}`)
+            .fontSize(24)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(this.healthMetrics.bmi > 0 ? 
+              this.healthCalculator.getBMIColor(this.healthMetrics.bmi) : '#333333')
+            .margin({ top: 5 })
+          Text(this.healthMetrics.bmiCategory)
+            .fontSize(12)
+            .fontColor('#999999')
+            .margin({ top: 3 })
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Center)
+        
+        Divider()
+          .vertical(true)
+          .height(60)
+          .color('#E0E0E0')
+        
+        // BMR
+        Column() {
+          Text('基础代谢')
+            .fontSize(14)
+            .fontColor('#666666')
+          Text(`${this.healthMetrics.bmr}`)
+            .fontSize(24)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#4ECDC4')
+            .margin({ top: 5 })
+          Text('千卡/天')
+            .fontSize(12)
+            .fontColor('#999999')
+            .margin({ top: 3 })
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Center)
+        
+        Divider()
+          .vertical(true)
+          .height(60)
+          .color('#E0E0E0')
+        
+        // 理想体重
+        Column() {
+          Text('理想体重')
+            .fontSize(14)
+            .fontColor('#666666')
+          Text(`${this.healthMetrics.idealWeight}`)
+            .fontSize(24)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#45B7AA')
+            .margin({ top: 5 })
+          Text('kg')
+            .fontSize(12)
+            .fontColor('#999999')
+            .margin({ top: 3 })
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Center)
+      }
+      .width('100%')
+      .margin({ top: 10 })
+      
+      // 健康体重范围
+      Row() {
+        Text(`健康体重范围: ${this.healthMetrics.healthyWeightRange[0]} - ${this.healthMetrics.healthyWeightRange[1]} kg`)
+          .fontSize(13)
+          .fontColor('#666666')
+      }
+      .width('100%')
+      .margin({ top: 15 })
+      .justifyContent(FlexAlign.Center)
+    }
+    .width('100%')
+    .padding(15)
+    .backgroundColor(Color.White)
+    .borderRadius(12)
+    .margin({ top: 10 })
+  }
+  
+  /**
+   * 步数目标设置区域
+   */
+  @Builder
+  StepGoalSection() {
+    Column() {
+      Text('步数目标')
+        .fontSize(16)
+        .fontWeight(FontWeight.Medium)
+        .width('100%')
+        .margin({ bottom: 15 })
+      
+      this.SettingItem('每日目标', `${this.stepGoal} 步`, () => {
+        this.showStepGoalDialog = true;
+      })
+      
+      Divider().color('#E0E0E0')
+      
+      // 快捷设置
+      Row() {
+        Text('快捷设置')
+          .fontSize(14)
+          .fontColor('#666666')
+        
+        Blank()
+        
+        Row() {
+          Button('5000')
+            .fontSize(12)
+            .height(30)
+            .onClick(() => this.updateStepGoal(5000))
+          
+          Button('8000')
+            .fontSize(12)
+            .height(30)
+            .margin({ left: 5 })
+            .onClick(() => this.updateStepGoal(8000))
+          
+          Button('10000')
+            .fontSize(12)
+            .height(30)
+            .margin({ left: 5 })
+            .onClick(() => this.updateStepGoal(10000))
+        }
+      }
+      .width('100%')
+      .margin({ top: 10 })
+    }
+    .width('100%')
+    .padding(15)
+    .backgroundColor(Color.White)
+    .borderRadius(12)
+    .margin({ top: 10 })
+    .bindSheet($$this.showStepGoalDialog, this.StepGoalDialog(), {
+      height: 300,
+      dragBar: false
+    })
+  }
+  
+  /**
+   * 久坐提醒设置区域
+   */
+  @Builder
+  SedentaryReminderSection() {
+    Column() {
+      Text('提醒设置')
+        .fontSize(16)
+        .fontWeight(FontWeight.Medium)
+        .width('100%')
+        .margin({ bottom: 15 })
+      
+      // 久坐提醒
+      Row() {
+        Column() {
+          Text('久坐提醒')
+            .fontSize(14)
+            .fontColor('#333333')
+          Text('长时间未活动时提醒')
+            .fontSize(12)
+            .fontColor('#999999')
+            .margin({ top: 2 })
+        }
+        .alignItems(HorizontalAlign.Start)
+        
+        Blank()
+        
+        Toggle({ type: ToggleType.Switch, isOn: this.reminderSettings.sedentaryEnabled })
+          .onChange((isOn: boolean) => {
+            this.reminderSettings.sedentaryEnabled = isOn;
+            this.reminderManager.updateSettings({ sedentaryEnabled: isOn });
+          })
+      }
+      .width('100%')
+      
+      if (this.reminderSettings.sedentaryEnabled) {
+        Divider().color('#E0E0E0').margin({ top: 10, bottom: 10 })
+        
+        Row() {
+          Text('提醒间隔')
+            .fontSize(14)
+            .fontColor('#333333')
+          
+          Blank()
+          
+          Row() {
+            Button('30分钟')
+              .fontSize(12)
+              .height(30)
+              .backgroundColor(this.reminderSettings.sedentaryThreshold === 30 ? '#4ECDC4' : '#E0E0E0')
+              .fontColor(this.reminderSettings.sedentaryThreshold === 30 ? Color.White : '#333333')
+              .onClick(() => {
+                this.reminderSettings.sedentaryThreshold = 30;
+                this.reminderManager.updateSettings({ sedentaryThreshold: 30 });
+              })
+            
+            Button('60分钟')
+              .fontSize(12)
+              .height(30)
+              .margin({ left: 5 })
+              .backgroundColor(this.reminderSettings.sedentaryThreshold === 60 ? '#4ECDC4' : '#E0E0E0')
+              .fontColor(this.reminderSettings.sedentaryThreshold === 60 ? Color.White : '#333333')
+              .onClick(() => {
+                this.reminderSettings.sedentaryThreshold = 60;
+                this.reminderManager.updateSettings({ sedentaryThreshold: 60 });
+              })
+            
+            Button('90分钟')
+              .fontSize(12)
+              .height(30)
+              .margin({ left: 5 })
+              .backgroundColor(this.reminderSettings.sedentaryThreshold === 90 ? '#4ECDC4' : '#E0E0E0')
+              .fontColor(this.reminderSettings.sedentaryThreshold === 90 ? Color.White : '#333333')
+              .onClick(() => {
+                this.reminderSettings.sedentaryThreshold = 90;
+                this.reminderManager.updateSettings({ sedentaryThreshold: 90 });
+              })
+          }
+        }
+        .width('100%')
+      }
+      
+      Divider().color('#E0E0E0').margin({ top: 15, bottom: 15 })
+      
+      // 目标达成提醒
+      Row() {
+        Column() {
+          Text('目标达成提醒')
+            .fontSize(14)
+            .fontColor('#333333')
+          Text('完成步数目标时提醒')
+            .fontSize(12)
+            .fontColor('#999999')
+            .margin({ top: 2 })
+        }
+        .alignItems(HorizontalAlign.Start)
+        
+        Blank()
+        
+        Toggle({ type: ToggleType.Switch, isOn: this.reminderSettings.goalAchievedEnabled })
+          .onChange((isOn: boolean) => {
+            this.reminderSettings.goalAchievedEnabled = isOn;
+            this.reminderManager.updateSettings({ goalAchievedEnabled: isOn });
+          })
+      }
+      .width('100%')
+      
+      Divider().color('#E0E0E0').margin({ top: 15, bottom: 15 })
+      
+      // 每日目标提醒
+      Row() {
+        Column() {
+          Text('每日目标提醒')
+            .fontSize(14)
+            .fontColor('#333333')
+          Text('定时提醒完成目标')
+            .fontSize(12)
+            .fontColor('#999999')
+            .margin({ top: 2 })
+        }
+        .alignItems(HorizontalAlign.Start)
+        
+        Blank()
+        
+        Toggle({ type: ToggleType.Switch, isOn: this.reminderSettings.dailyGoalEnabled })
+          .onChange((isOn: boolean) => {
+            this.reminderSettings.dailyGoalEnabled = isOn;
+            this.reminderManager.updateSettings({ dailyGoalEnabled: isOn });
+          })
+      }
+      .width('100%')
+      
+      if (this.reminderSettings.dailyGoalEnabled) {
+        Divider().color('#E0E0E0').margin({ top: 10, bottom: 10 })
+        
+        Row() {
+          Text('提醒时间')
+            .fontSize(14)
+            .fontColor('#333333')
+          
+          Blank()
+          
+          Button(this.reminderSettings.dailyGoalTime)
+            .fontSize(14)
+            .height(30)
+            .backgroundColor('#F0F0F0')
+            .fontColor('#333333')
+            .onClick(() => {
+              this.showReminderTimeDialog = true;
+            })
+        }
+        .width('100%')
+      }
+      
+      Divider().color('#E0E0E0').margin({ top: 15, bottom: 15 })
+      
+      // 提醒音和振动
+      Row() {
+        Text('提醒音')
+          .fontSize(14)
+          .fontColor('#333333')
+        
+        Blank()
+        
+        Toggle({ type: ToggleType.Switch, isOn: this.reminderSettings.soundEnabled })
+          .onChange((isOn: boolean) => {
+            this.reminderSettings.soundEnabled = isOn;
+            this.reminderManager.updateSettings({ soundEnabled: isOn });
+          })
+      }
+      .width('100%')
+      
+      Divider().color('#E0E0E0').margin({ top: 15, bottom: 15 })
+      
+      Row() {
+        Text('振动')
+          .fontSize(14)
+          .fontColor('#333333')
+        
+        Blank()
+        
+        Toggle({ type: ToggleType.Switch, isOn: this.reminderSettings.vibrationEnabled })
+          .onChange((isOn: boolean) => {
+            this.reminderSettings.vibrationEnabled = isOn;
+            this.reminderManager.updateSettings({ vibrationEnabled: isOn });
+          })
+      }
+      .width('100%')
+      
+      // 今日提醒统计
+      Divider().color('#E0E0E0').margin({ top: 15, bottom: 15 })
+      
+      Row() {
+        Text('今日提醒次数')
+          .fontSize(14)
+          .fontColor('#333333')
+        
+        Blank()
+        
+        Text(`${this.reminderManager.getTodayReminderCount()} 次`)
+          .fontSize(14)
+          .fontColor('#4ECDC4')
+          .fontWeight(FontWeight.Medium)
+      }
+      .width('100%')
+    }
+    .width('100%')
+    .padding(15)
+    .backgroundColor(Color.White)
+    .borderRadius(12)
+    .margin({ top: 10 })
+    .bindSheet($$this.showReminderTimeDialog, this.ReminderTimeDialog(), {
+      height: 300,
+      dragBar: false
+    })
+  }
+  
+  /**
+   * 提醒时间设置对话框
+   */
+  @Builder
+  ReminderTimeDialog() {
+    Column() {
+      Text('设置提醒时间')
+        .fontSize(16)
+        .fontWeight(FontWeight.Medium)
+        .margin({ bottom: 20 })
+      
+      Row() {
+        // 小时选择
+        Column() {
+          Text('小时')
+            .fontSize(14)
+            .fontColor('#666666')
+            .margin({ bottom: 10 })
+          
+          ForEach(['06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22'], (hour: string) => {
+            Button(hour)
+              .fontSize(14)
+              .width(50)
+              .height(35)
+              .margin({ bottom: 5 })
+              .backgroundColor(this.reminderSettings.dailyGoalTime.split(':')[0] === hour ? '#4ECDC4' : '#F0F0F0')
+              .fontColor(this.reminderSettings.dailyGoalTime.split(':')[0] === hour ? Color.White : '#333333')
+              .onClick(() => {
+                const minute = this.reminderSettings.dailyGoalTime.split(':')[1] || '00';
+                this.reminderSettings.dailyGoalTime = `${hour}:${minute}`;
+              })
+          })
+        }
+        .layoutWeight(1)
+        
+        Divider()
+          .vertical(true)
+          .height(200)
+          .color('#E0E0E0')
+        
+        // 分钟选择
+        Column() {
+          Text('分钟')
+            .fontSize(14)
+            .fontColor('#666666')
+            .margin({ bottom: 10 })
+          
+          ForEach(['00', '15', '30', '45'], (minute: string) => {
+            Button(minute)
+              .fontSize(14)
+              .width(50)
+              .height(35)
+              .margin({ bottom: 5 })
+              .backgroundColor(this.reminderSettings.dailyGoalTime.split(':')[1] === minute ? '#4ECDC4' : '#F0F0F0')
+              .fontColor(this.reminderSettings.dailyGoalTime.split(':')[1] === minute ? Color.White : '#333333')
+              .onClick(() => {
+                const hour = this.reminderSettings.dailyGoalTime.split(':')[0] || '20';
+                this.reminderSettings.dailyGoalTime = `${hour}:${minute}`;
+              })
+          })
+        }
+        .layoutWeight(1)
+      }
+      .width('100%')
+      
+      Row() {
+        Button('取消')
+          .layoutWeight(1)
+          .backgroundColor('#F0F0F0')
+          .fontColor('#333333')
+          .onClick(() => {
+            this.showReminderTimeDialog = false;
+          })
+        
+        Button('确定')
+          .layoutWeight(1)
+          .backgroundColor('#4ECDC4')
+          .fontColor(Color.White)
+          .margin({ left: 10 })
+          .onClick(() => {
+            this.reminderManager.updateSettings({ dailyGoalTime: this.reminderSettings.dailyGoalTime });
+            this.showReminderTimeDialog = false;
+          })
+      }
+      .width('100%')
+      .margin({ top: 20 })
+    }
+    .width('100%')
+    .padding(20)
+    .backgroundColor(Color.White)
+    .borderRadius({ topLeft: 16, topRight: 16 })
+  }
+  
+  /**
+   * 数据管理区域
+   */
+  @Builder
+  DataManagementSection() {
+    Column() {
+      Text('数据管理')
+        .fontSize(16)
+        .fontWeight(FontWeight.Medium)
+        .width('100%')
+        .margin({ bottom: 15 })
+      
+      this.SettingItem('清除缓存', '', () => {
+        this.clearCache();
+      })
+      
+      Divider().color('#E0E0E0')
+      
+      this.SettingItem('导出数据', '', () => {
+        this.exportData();
+      })
+      
+      Divider().color('#E0E0E0')
+      
+      this.SettingItem('重置设置', '', () => {
+        this.resetSettings();
+      })
+    }
+    .width('100%')
+    .padding(15)
+    .backgroundColor(Color.White)
+    .borderRadius(12)
+    .margin({ top: 10 })
+  }
+  
+  /**
+   * API版本信息区域
+   */
+  @Builder
+  ApiVersionSection() {
+    Column() {
+      Text('设备兼容性')
+        .fontSize(16)
+        .fontWeight(FontWeight.Medium)
+        .width('100%')
+        .margin({ bottom: 15 })
+      
+      if (this.apiVersionInfo) {
+        Row() {
+          Text('设备类型')
+            .fontSize(14)
+            .fontColor('#333333')
+          
+          Blank()
+          
+          Text(this.apiVersionInfo.deviceType)
+            .fontSize(14)
+            .fontColor('#666666')
+        }
+        .width('100%')
+        
+        Divider().color('#E0E0E0').margin({ top: 10, bottom: 10 })
+        
+        Row() {
+          Text('API版本')
+            .fontSize(14)
+            .fontColor('#333333')
+          
+          Blank()
+          
+          Text(`${this.apiVersionInfo.sdkApiVersion}`)
+            .fontSize(14)
+            .fontColor('#666666')
+        }
+        .width('100%')
+        
+        Divider().color('#E0E0E0').margin({ top: 10, bottom: 10 })
+        
+        Row() {
+          Text('系统版本')
+            .fontSize(14)
+            .fontColor('#333333')
+          
+          Blank()
+          
+          Text(this.apiVersionInfo.distributionOSApiName)
+            .fontSize(14)
+            .fontColor('#666666')
+        }
+        .width('100%')
+        
+        Divider().color('#E0E0E0').margin({ top: 10, bottom: 10 })
+        
+        Row() {
+          Text('兼容性')
+            .fontSize(14)
+            .fontColor('#333333')
+          
+          Blank()
+          
+          if (this.apiVersionInfo.sdkApiVersion >= ApiVersion.API_17) {
+            Text('✓ 完全兼容')
+              .fontSize(14)
+              .fontColor('#4CAF50')
+          } else {
+            Text('部分功能受限')
+              .fontSize(14)
+              .fontColor('#FF9800')
+          }
+        }
+        .width('100%')
+      } else {
+        Text('加载中...')
+          .fontSize(14)
+          .fontColor('#999999')
+      }
+    }
+    .width('100%')
+    .padding(15)
+    .backgroundColor(Color.White)
+    .borderRadius(12)
+    .margin({ top: 10 })
+  }
+      
+      Divider().color('#E0E0E0')
+      
+      this.SettingItem('重置设置', '', () => {
+        this.resetSettings();
+      })
+    }
+    .width('100%')
+    .padding(15)
+    .backgroundColor(Color.White)
+    .borderRadius(12)
+    .margin({ top: 10 })
+  }
+  
+  /**
+   * 关于信息区域
+   */
+  @Builder
+  AboutSection() {
+    Column() {
+      Text('关于')
+        .fontSize(16)
+        .fontWeight(FontWeight.Medium)
+        .width('100%')
+        .margin({ bottom: 15 })
+      
+      this.SettingItem('版本', '1.0.0', () => {})
+      
+      Divider().color('#E0E0E0')
+      
+      this.SettingItem('开发者', 'HarmonyOS Team', () => {})
+    }
+    .width('100%')
+    .padding(15)
+    .backgroundColor(Color.White)
+    .borderRadius(12)
+    .margin({ top: 10 })
+  }
+  
+  /**
+   * 设置项组件
+   */
+  @Builder
+  SettingItem(label: string, value: string, action: () => void) {
+    Row() {
+      Text(label)
+        .fontSize(14)
+        .fontColor('#333333')
+      
+      Blank()
+      
+      if (value) {
+        Text(value)
+          .fontSize(14)
+          .fontColor('#666666')
+          .margin({ right: 5 })
+      }
+      
+      Text('>')
+        .fontSize(14)
+        .fontColor('#999999')
+    }
+    .width('100%')
+    .height(50)
+    .onClick(action)
+  }
+  
+  /**
+   * 用户档案编辑对话框
+   */
+  @Builder
+  UserProfileDialog() {
+    Column() {
+      Text('编辑用户档案')
+        .fontSize(18)
+        .fontWeight(FontWeight.Medium)
+        .margin({ bottom: 20 })
+      
+      // 身高输入
+      Row() {
+        Text('身高 (cm):')
+          .fontSize(14)
+          .width(80)
+        
+        TextInput({ text: String(this.userProfile.height) })
+          .type(InputType.Number)
+          .layoutWeight(1)
+          .height(40)
+          .onChange((value: string) => {
+            const height = parseInt(value);
+            if (!isNaN(height) && height > 0) {
+              this.userProfile.height = height;
+            }
+          })
+      }
+      .width('100%')
+      .margin({ bottom: 15 })
+      
+      // 体重输入
+      Row() {
+        Text('体重 (kg):')
+          .fontSize(14)
+          .width(80)
+        
+        TextInput({ text: String(this.userProfile.weight) })
+          .type(InputType.Number)
+          .layoutWeight(1)
+          .height(40)
+          .onChange((value: string) => {
+            const weight = parseInt(value);
+            if (!isNaN(weight) && weight > 0) {
+              this.userProfile.weight = weight;
+            }
+          })
+      }
+      .width('100%')
+      .margin({ bottom: 15 })
+      
+      // 年龄输入
+      Row() {
+        Text('年龄:')
+          .fontSize(14)
+          .width(80)
+        
+        TextInput({ text: String(this.userProfile.age) })
+          .type(InputType.Number)
+          .layoutWeight(1)
+          .height(40)
+          .onChange((value: string) => {
+            const age = parseInt(value);
+            if (!isNaN(age) && age > 0) {
+              this.userProfile.age = age;
+            }
+          })
+      }
+      .width('100%')
+      .margin({ bottom: 15 })
+      
+      // 性别选择
+      Row() {
+        Text('性别:')
+          .fontSize(14)
+          .width(80)
+        
+        Row() {
+          Button('男')
+            .fontSize(14)
+            .height(36)
+            .width(70)
+            .backgroundColor(this.userProfile.gender === 'male' ? '#4ECDC4' : '#E0E0E0')
+            .fontColor(this.userProfile.gender === 'male' ? Color.White : '#333333')
+            .onClick(() => {
+              this.userProfile.gender = 'male';
+            })
+          
+          Button('女')
+            .fontSize(14)
+            .height(36)
+            .width(70)
+            .margin({ left: 10 })
+            .backgroundColor(this.userProfile.gender === 'female' ? '#4ECDC4' : '#E0E0E0')
+            .fontColor(this.userProfile.gender === 'female' ? Color.White : '#333333')
+            .onClick(() => {
+              this.userProfile.gender = 'female';
+            })
+        }
+        .layoutWeight(1)
+      }
+      .width('100%')
+      .margin({ bottom: 20 })
+      
+      // 按钮区域
+      Row() {
+        Button('取消')
+          .width('45%')
+          .backgroundColor('#E0E0E0')
+          .onClick(() => {
+            this.showUserProfileDialog = false;
+          })
+        
+        Button('保存')
+          .width('45%')
+          .backgroundColor('#4ECDC4')
+          .onClick(async () => {
+            await this.profileManager.saveUserProfile(this.userProfile);
+            this.showUserProfileDialog = false;
+            this.getUIContext().getPromptAction().showToast({ message: '保存成功' });
+          })
+      }
+      .width('100%')
+      .justifyContent(FlexAlign.SpaceBetween)
+    }
+    .width('100%')
+    .padding(20)
+    .backgroundColor(Color.White)
+    .borderRadius({ topLeft: 20, topRight: 20 })
+  }
+  
+  /**
+   * 步数目标编辑对话框
+   */
+  @Builder
+  StepGoalDialog() {
+    Column() {
+      Text('设置步数目标')
+        .fontSize(18)
+        .fontWeight(FontWeight.Medium)
+        .margin({ bottom: 20 })
+      
+      Text(`当前目标: ${this.stepGoal} 步`)
+        .fontSize(16)
+        .margin({ bottom: 20 })
+      
+      Row() {
+        Button('取消')
+          .width('45%')
+          .backgroundColor('#E0E0E0')
+          .onClick(() => {
+            this.showStepGoalDialog = false;
+          })
+        
+        Button('确定')
+          .width('45%')
+          .backgroundColor('#4ECDC4')
+          .onClick(() => {
+            StepsUtil.putStorageValue(CommonConstants.STEP_GOAL, String(this.stepGoal));
+            this.showStepGoalDialog = false;
+            this.getUIContext().getPromptAction().showToast({ message: '设置成功' });
+          })
+      }
+      .width('100%')
+      .justifyContent(FlexAlign.SpaceBetween)
+    }
+    .width('100%')
+    .padding(20)
+    .backgroundColor(Color.White)
+    .borderRadius({ topLeft: 20, topRight: 20 })
+  }
+  
+  /**
+   * 更新步数目标
+   */
+  private updateStepGoal(goal: number): void {
+    this.stepGoal = goal;
+    StepsUtil.putStorageValue(CommonConstants.STEP_GOAL, String(goal));
+    this.getUIContext().getPromptAction().showToast({ message: `目标已设置为 ${goal} 步` });
+  }
+  
+  /**
+   * 更新久坐提醒阈值
+   */
+  private updateSedentaryThreshold(minutes: number): void {
+    this.sedentaryThreshold = minutes;
+    // 这里可以添加保存逻辑
+    Logger.info(TAG, `Sedentary threshold updated: ${minutes} minutes`);
+  }
+  
+  /**
+   * 清除缓存
+   */
+  private async clearCache(): Promise<void> {
+    try {
+      // 清除缓存逻辑
+      this.getUIContext().getPromptAction().showToast({ message: '缓存已清除' });
+      Logger.info(TAG, 'Cache cleared');
+    } catch (err) {
+      Logger.error(TAG, `Clear cache failed: ${JSON.stringify(err)}`);
+    }
+  }
+  
+  /**
+   * 导出数据
+   */
+  private async exportData(): Promise<void> {
+    try {
+      // 导出数据逻辑
+      this.getUIContext().getPromptAction().showToast({ message: '数据导出功能开发中' });
+      Logger.info(TAG, 'Data export triggered');
+    } catch (err) {
+      Logger.error(TAG, `Export data failed: ${JSON.stringify(err)}`);
+    }
+  }
+  
+  /**
+   * 重置设置
+   */
+  private async resetSettings(): Promise<void> {
+    try {
+      // 重置设置逻辑
+      this.getUIContext().getPromptAction().showToast({ message: '设置已重置' });
+      Logger.info(TAG, 'Settings reset');
+    } catch (err) {
+      Logger.error(TAG, `Reset settings failed: ${JSON.stringify(err)}`);
+    }
+  }
+}

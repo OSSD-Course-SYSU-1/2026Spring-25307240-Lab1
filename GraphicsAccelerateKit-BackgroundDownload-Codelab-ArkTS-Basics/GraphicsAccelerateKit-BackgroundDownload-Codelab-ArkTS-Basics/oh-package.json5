@@ -1,9 +1,0 @@
-{
-  "modelVersion": "5.1.0",
-  "description": "Please describe the basic information.",
-  "dependencies": {
-    "@ifbear/fast-xml-parser": "^5.0.8"
-  },
-  "devDependencies": {},
-  "dynamicDependencies": {}
-}

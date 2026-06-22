@@ -1,0 +1,72 @@
+import LazyDataSource from "@normalized:N&&&entry/src/main/ets/generated1/util/LazyDataSource&";
+export class Data {
+    private static instance: Data;
+    lazyDataSource: LazyDataSource<DataSource> = new LazyDataSource();
+    static readonly IMAGES: Resource[] = [{ "id": -1, "type": -1, params: [('app.media.realImageGen_common_0')], "bundleName": "com.example.pedometerapp", "moduleName": "entry" }, { "id": -1, "type": -1, params: [('app.media.realImageGen_common_0')], "bundleName": "com.example.pedometerapp", "moduleName": "entry" }, { "id": -1, "type": -1, params: [('app.media.realImageGen_common_3')], "bundleName": "com.example.pedometerapp", "moduleName": "entry" }];
+    static readonly MAIN_TEXT: string[] = ['跑步训练', '瑜伽练习', '力量训练'];
+    static readonly SUB_TEXT: string[] = ['2023-10-25 18:30', '2023-10-24 09:15', '2023-10-22 16:45'];
+    static readonly DESCRIPTION_TEXT: string[] = ['时长：45分钟 消耗：320卡', '时长：60分钟 消耗：280卡', '时长：30分钟 消耗：250卡'];
+    static readonly TAG_TEXTS_LIST: string[][] = [['有氧运动', '户外'], ['柔韧性', '室内'], ['增肌', '器械']];
+    static readonly TAG_TEXT_COLORS_LIST: Color[][] = [[Color.Brown, Color.Green, Color.Gray], [Color.Brown, Color.Green, Color.Gray],
+        [Color.Brown, Color.Green, Color.Gray], [Color.Brown, Color.Green, Color.Gray],
+        [Color.Brown, Color.Green, Color.Gray], [Color.Brown, Color.Green, Color.Gray]];
+    constructor() {
+    }
+    public static getInstance(): Data {
+        if (!Data.instance) {
+            Data.instance =
+                new Data();
+        }
+        return Data.instance;
+    }
+    /**
+     * Data loaded on current view converts network data into rendering data
+     */
+    getResources(): Promise<void> {
+        /**
+         * use your web request here
+         */
+        return new Promise((resolve: Function) => {
+            const modelList: Array<DataSource> = [];
+            for (let index = 0; index < Data.IMAGES.length; index++) {
+                modelList.push(new DataSource(Data.IMAGES[index], Data.MAIN_TEXT[index], Data.SUB_TEXT[index], Data.DESCRIPTION_TEXT[index], Data.TAG_TEXTS_LIST[index], Data.TAG_TEXT_COLORS_LIST[index]));
+            }
+            this.lazyDataSource.pushArrayData(modelList);
+            resolve();
+        });
+    }
+}
+export class DataSource {
+    private image: Resource;
+    private mainText: string;
+    private subText: string;
+    private descriptionText: string;
+    private tagTextList: string[];
+    private tagTextColorList: Color[];
+    constructor(image: Resource, mainText: string, subText: string, descriptionText: string, tagTextList: string[], tagTextColorList: Color[]) {
+        this.image = image;
+        this.mainText = mainText;
+        this.subText = subText;
+        this.descriptionText = descriptionText;
+        this.tagTextList = tagTextList;
+        this.tagTextColorList = tagTextColorList;
+    }
+    getImage(): Resource {
+        return this.image;
+    }
+    getMainText(): string {
+        return this.mainText;
+    }
+    getSubText(): string {
+        return this.subText;
+    }
+    getDescriptionText(): string {
+        return this.descriptionText;
+    }
+    getTagTextList(): string[] {
+        return this.tagTextList;
+    }
+    getTagTextColorList(): Color[] {
+        return this.tagTextColorList;
+    }
+}

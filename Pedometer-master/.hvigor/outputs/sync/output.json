@@ -1,0 +1,144 @@
+{
+  "version": 1,
+  "ohos-module-entry": {
+    "SELECT_TARGET": "default",
+    "MODULE_BUILD_DIR": "E:\\KAIYUANRUANJIANKECHEN\\Pedometer-master\\entry\\build",
+    "TARGETS": {
+      "default": {
+        "SOURCE_ROOT": "E:\\KAIYUANRUANJIANKECHEN\\Pedometer-master\\entry\\src\\main",
+        "RESOURCES_PATH": [
+          "E:\\KAIYUANRUANJIANKECHEN\\Pedometer-master\\entry\\src\\main\\resources"
+        ],
+        "BUILD_PATH": {
+          "OUTPUT_PATH": "E:\\KAIYUANRUANJIANKECHEN\\Pedometer-master\\entry\\build\\default\\outputs\\default",
+          "INTERMEDIA_PATH": "E:\\KAIYUANRUANJIANKECHEN\\Pedometer-master\\entry\\build\\default\\intermediates",
+          "JS_ASSETS_PATH": "E:\\KAIYUANRUANJIANKECHEN\\Pedometer-master\\entry\\build\\default\\intermediates\\loader_out\\default",
+          "JS_LITE_ASSETS_PATH": "E:\\KAIYUANRUANJIANKECHEN\\Pedometer-master\\entry\\build\\default\\intermediates\\loader_out_lite\\default",
+          "RES_PATH": "E:\\KAIYUANRUANJIANKECHEN\\Pedometer-master\\entry\\build\\default\\intermediates\\res\\default",
+          "RES_PROFILE_PATH": "E:\\KAIYUANRUANJIANKECHEN\\Pedometer-master\\entry\\build\\default\\intermediates\\res\\default\\resources\\base\\profile",
+          "ETS_SUPER_VISUAL_PATH": "E:\\KAIYUANRUANJIANKECHEN\\Pedometer-master\\entry\\build\\default\\cache\\default\\default@CompileArkTS\\esmodule",
+          "JS_SUPER_VISUAL_PATH": "E:\\KAIYUANRUANJIANKECHEN\\Pedometer-master\\entry\\build\\default\\cache\\default\\default@CompileJS\\jsbundle",
+          "WORKER_LOADER": "E:\\KAIYUANRUANJIANKECHEN\\Pedometer-master\\entry\\build\\default\\intermediates\\loader\\default\\loader.json",
+          "MANIFEST_JSON": "E:\\KAIYUANRUANJIANKECHEN\\Pedometer-master\\entry\\build\\default\\intermediates\\manifest\\default",
+          "OUTPUT_METADATA_JSON": "E:\\KAIYUANRUANJIANKECHEN\\Pedometer-master\\entry\\build\\default\\intermediates\\hap_metadata\\default\\output_metadata.json",
+          "SOURCE_MAP_DIR": "E:\\KAIYUANRUANJIANKECHEN\\Pedometer-master\\entry\\build\\default\\intermediates\\source_map\\default"
+        },
+        "BUILD_OPTION": {
+          "debuggable": true
+        }
+      }
+    },
+    "BUILD_OPTION": {
+      "default-default": {
+        "debuggable": true,
+        "copyFrom": "default",
+        "strictMode": {
+          "caseSensitiveCheck": true,
+          "useNormalizedOHMUrl": true
+        },
+        "externalNativeOptions": {
+          "path": "./src/main/cpp/CMakeLists.txt",
+          "arguments": "",
+          "cppFlags": ""
+        }
+      }
+    },
+    "BUILD_PROFILE_OPT": {
+      "apiType": "stageMode",
+      "buildOption": {
+        "externalNativeOptions": {
+          "path": "./src/main/cpp/CMakeLists.txt",
+          "arguments": "",
+          "cppFlags": ""
+        }
+      },
+      "targets": [
+        {
+          "name": "default"
+        }
+      ]
+    },
+    "BUILD_CACHE_DIR": ""
+  },
+  "ohos-project": {
+    "SELECT_PRODUCT_NAME": "default",
+    "MODULE_BUILD_DIR": "E:\\KAIYUANRUANJIANKECHEN\\Pedometer-master\\build",
+    "BUNDLE_NAME": "com.example.pedometerapp",
+    "VERSION_CODE": 1000000,
+    "VERSION_NAME": "1.0.0",
+    "BUILD_PATH": {
+      "OUTPUT_PATH": "E:\\KAIYUANRUANJIANKECHEN\\Pedometer-master\\build\\outputs\\default"
+    },
+    "MODULES": [
+      {
+        "name": "entry",
+        "srcPath": "E:\\KAIYUANRUANJIANKECHEN\\Pedometer-master\\entry",
+        "targets": [
+          {
+            "name": "default",
+            "applyToProducts": [
+              "default"
+            ]
+          }
+        ],
+        "belongProjectPath": "E:\\KAIYUANRUANJIANKECHEN\\Pedometer-master"
+      }
+    ],
+    "PROFILE_OPT": {
+      "app": {
+        "signingConfigs": [
+          {
+            "name": "default",
+            "type": "HarmonyOS",
+            "material": {
+              "certpath": "C:\\Users\\HP\\.ohos\\config\\default_Pedometer-master_pBcEWMpr3x3-BRv8OcleQ5ILHMwDRMhLKT6kzICOF_8=.cer",
+              "keyAlias": "debugKey",
+              "keyPassword": "0000001BD6D9279493D8F6774CE139D891DB9E84813417165C0CFB538948DC558C36A23927743DC10D685B",
+              "profile": "C:\\Users\\HP\\.ohos\\config\\default_Pedometer-master_pBcEWMpr3x3-BRv8OcleQ5ILHMwDRMhLKT6kzICOF_8=.p7b",
+              "signAlg": "SHA256withECDSA",
+              "storeFile": "C:\\Users\\HP\\.ohos\\config\\default_Pedometer-master_pBcEWMpr3x3-BRv8OcleQ5ILHMwDRMhLKT6kzICOF_8=.p12",
+              "storePassword": "0000001B46A9533019263211BCC0EF18E5A99314B984D6C821DFF3D64156736401D2C606E2175EAAC9E5B2"
+            }
+          }
+        ],
+        "products": [
+          {
+            "name": "default",
+            "targetSdkVersion": "5.0.0(12)",
+            "compatibleSdkVersion": "5.0.0(12)",
+            "runtimeOS": "HarmonyOS",
+            "buildOption": {
+              "strictMode": {
+                "caseSensitiveCheck": true,
+                "useNormalizedOHMUrl": true
+              }
+            }
+          }
+        ]
+      },
+      "modules": [
+        {
+          "name": "entry",
+          "srcPath": "./entry",
+          "targets": [
+            {
+              "name": "default",
+              "applyToProducts": [
+                "default"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "CONFIG_PROPERTIES": {
+      "enableSignTask": true,
+      "skipNativeIncremental": false,
+      "hvigor.keepDependency": true
+    },
+    "OVERALL_PROJECT_PATHS": [
+      "E:\\KAIYUANRUANJIANKECHEN\\Pedometer-master"
+    ],
+    "BUILD_CACHE_DIR": ""
+  }
+}

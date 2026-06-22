@@ -1,0 +1,3 @@
+{
+  "src" : [ "generated1/Index", "generated/Index", "pages/HomePage", "pages/HomePageWearable", "pages/HomePageEnhanced", "pages/HistoryPage", "pages/SettingsPage", "pages/UserAgreementPage", "pages/PrivacyPolicyPage", "pages/FeedbackPage", "pages/FAQPage" ]
+}
